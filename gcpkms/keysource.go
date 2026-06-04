@@ -30,7 +30,7 @@ const (
 	SopsGoogleCredentialsOAuthTokenEnv = "GOOGLE_OAUTH_ACCESS_TOKEN"
 	// SopsGoogleCredentialsOAuthTokenFileEnv is the environment variable used for the path to a file
 	// containing the GCP OAuth 2.0 Token.
-	SopsGoogleCredentialsOAuthTokenFileEnv = "SOPS_GCPKMS_TOKEN_FILE"
+	SopsGoogleCredentialsOAuthTokenFileEnv = "GOOGLE_OAUTH_ACCESS_TOKEN_FILE"
 	// SopsGCPKMSClientTypeEnv is the environment variable used to specify the
 	// GCP KMS client type. Valid values are "grpc" (default) and "rest".
 	SopsGCPKMSClientTypeEnv = "SOPS_GCP_KMS_CLIENT_TYPE"
@@ -314,7 +314,10 @@ func (key *MasterKey) newKMSClient(ctx context.Context) (*kms.KeyManagementClien
 			break
 		}
 
-		if atCredentials := getGoogleOAuthTokenFromEnv(); atCredentials != nil {
+		if atCredentials, err := getGoogleOAuthTokenFromEnv(); atCredentials != nil {
+			if err != nil {
+				return nil, fmt.Errorf("credentials: %w", err)
+			}
 			opts = append(opts, option.WithTokenSource(atCredentials))
 			break
 		}
@@ -376,19 +379,19 @@ func getGoogleOAuthTokenFromEnv() oauth2.TokenSource {
 	if tokenFile, ok := os.LookupEnv(SopsGoogleCredentialsOAuthTokenFileEnv); ok && len(tokenFile) > 0 {
 		token, err := fsio.Read(tokenFile)
 		if err != nil {
-			return nil
+			return nil, fmt.Errorf("failed to read token file %q: %w", tokenFile, err)
 		}
 		tokenSource := oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: strings.TrimSpace(string(token))},
 		)
-		return tokenSource
+		return tokenSource, nil
 	}
 
 	if token, ok := os.LookupEnv(SopsGoogleCredentialsOAuthTokenEnv); ok && len(token) > 0 {
 		tokenSource := oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: token},
 		)
-		return tokenSource
+		return tokenSource, nil
 	}
-	return nil
+	return nil, nil
 }
