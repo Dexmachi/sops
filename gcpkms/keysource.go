@@ -28,6 +28,9 @@ const (
 	// SopsGoogleCredentialsOAuthTokenEnv is the environment variable used for the
 	// GCP OAuth 2.0 Token.
 	SopsGoogleCredentialsOAuthTokenEnv = "GOOGLE_OAUTH_ACCESS_TOKEN"
+	// SopsGoogleCredentialsOAuthTokenFileEnv is the environment variable used for the path to a file
+	// containing the GCP OAuth 2.0 Token.
+	SopsGoogleCredentialsOAuthTokenFileEnv = "SOPS_GCPKMS_TOKEN_FILE"
 	// SopsGCPKMSClientTypeEnv is the environment variable used to specify the
 	// GCP KMS client type. Valid values are "grpc" (default) and "rest".
 	SopsGCPKMSClientTypeEnv = "SOPS_GCP_KMS_CLIENT_TYPE"
@@ -370,6 +373,17 @@ func getGoogleCredentials() ([]byte, error) {
 // as the OAauth 2.0 token.
 // It returns an error and a nil byte slice if the envrionment variable is not set.
 func getGoogleOAuthTokenFromEnv() oauth2.TokenSource {
+	if tokenFile, ok := os.LookupEnv(SopsGoogleCredentialsOAuthTokenFileEnv); ok && len(tokenFile) > 0 {
+		token, err := fsio.Read(tokenFile)
+		if err != nil {
+			return nil
+		}
+		tokenSource := oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: strings.TrimSpace(string(token))},
+		)
+		return tokenSource
+	}
+
 	if token, ok := os.LookupEnv(SopsGoogleCredentialsOAuthTokenEnv); ok && len(token) > 0 {
 		tokenSource := oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: token},
