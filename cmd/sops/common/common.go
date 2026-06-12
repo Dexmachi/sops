@@ -257,8 +257,12 @@ func FixTreeBug(opts GenericDecryptOpts, tree *sops.Tree, fixer keys.BugFixer) (
 	}
 
 	var groups [][]keys.MasterKey
+	var originalTreeGroups []sops.KeyGroup
 	for _, g := range tree.Metadata.KeyGroups {
 		groups = append(groups, []keys.MasterKey(g))
+		backupGroup := make(sops.KeyGroup, len(g))
+		copy(backupGroup, g)
+		originalTreeGroups = append(originalTreeGroups, backupGroup)
 	}
 
 	// If there is another key, then we should be able to just decrypt
@@ -280,6 +284,8 @@ func FixTreeBug(opts GenericDecryptOpts, tree *sops.Tree, fixer keys.BugFixer) (
 				KeyServices: opts.KeyServices,
 			})
 		})
+		
+		tree.Metadata.KeyGroups = originalTreeGroups
 	}
 
 	if dataKey == nil {

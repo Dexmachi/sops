@@ -240,6 +240,31 @@ func extractMasterKeys(group keyGroup, opts keys.CreationOptions) (sops.KeyGroup
 		}
 	}
 
+	for providerName, providerData := range group.Providers {
+		found := false
+		for _, name := range order {
+			if providerName == name {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+
+		provider := keys.GetProvider(providerName)
+		if provider == nil {
+			continue
+		}
+		masterKeys, err := provider.KeysFromConfig(providerData, opts)
+		if err != nil {
+			return nil, err
+		}
+		for _, mk := range masterKeys {
+			kg = append(kg, mk)
+		}
+	}
+
 	return deduplicateKeygroup(kg), nil
 }
 
@@ -288,6 +313,31 @@ func getKeyGroupsFromCreationRule(cRule *creationRule, kmsEncryptionContext map[
 			}
 		}
 		
+		for providerName, providerData := range cRule.Providers {
+			found := false
+			for _, name := range order {
+				if providerName == name {
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+
+			provider := keys.GetProvider(providerName)
+			if provider == nil {
+				continue
+			}
+			masterKeys, err := provider.KeysFromConfig(providerData, opts)
+			if err != nil {
+				return nil, err
+			}
+			for _, mk := range masterKeys {
+				keyGroup = append(keyGroup, mk)
+			}
+		}
+
 		if len(keyGroup) > 0 {
 			groups = append(groups, deduplicateKeygroup(keyGroup))
 		}

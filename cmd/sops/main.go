@@ -1136,7 +1136,7 @@ func main() {
 						if cp, ok := p.(keys.CLIProvider); ok {
 							for _, pf := range cp.CLIConfig() {
 								if pf.IsKeyIdentifier {
-									name := strings.Split(pf.Name, ",")[0]
+									name := strings.TrimSpace(strings.Split(pf.Name, ",")[0])
 									if c.String("add-"+name) != "" || c.String("rm-"+name) != "" {
 										hasAddOrRm = true
 										break
@@ -1751,7 +1751,7 @@ func main() {
 				if cp, ok := p.(keys.CLIProvider); ok {
 					for _, pf := range cp.CLIConfig() {
 						if pf.IsKeyIdentifier {
-							name := strings.Split(pf.Name, ",")[0]
+							name := strings.TrimSpace(strings.Split(pf.Name, ",")[0])
 							if c.String("add-"+name) != "" || c.String("rm-"+name) != "" {
 								hasAddOrRm = true
 								break
