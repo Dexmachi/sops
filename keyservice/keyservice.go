@@ -1,107 +1,37 @@
-/*
-Package keyservice implements a gRPC API that can be used by SOPS to encrypt and decrypt the data key using remote
-master keys.
-*/
 package keyservice
 
 import (
-	"encoding/json"
 	"fmt"
+	"reflect"
 
-	"github.com/getsops/sops/v3/age"
-	"github.com/getsops/sops/v3/azkv"
-	"github.com/getsops/sops/v3/gcpkms"
-	"github.com/getsops/sops/v3/hckms"
-	"github.com/getsops/sops/v3/hcvault"
 	"github.com/getsops/sops/v3/keys"
-	"github.com/getsops/sops/v3/kms"
-	"github.com/getsops/sops/v3/pgp"
-	"github.com/getsops/sops/v3/plugin"
 )
 
-// KeyFromMasterKey converts a SOPS internal MasterKey to an RPC Key that can be serialized with Protocol Buffers
+type KeyServiceAdapter struct {
+	ToKey    func(keys.MasterKey) *Key
+	Encrypt  func(key any, plaintext []byte) ([]byte, error)
+	Decrypt  func(key any, ciphertext []byte) ([]byte, error)
+	ToString func(key any) string
+}
+
+var (
+	masterKeyToAdapter = make(map[string]KeyServiceAdapter)
+	protoTypeToAdapter = make(map[reflect.Type]KeyServiceAdapter)
+)
+
+func RegisterKeyServiceAdapter(
+	providerType string,
+	protoType reflect.Type,
+	adapter KeyServiceAdapter,
+) {
+	masterKeyToAdapter[providerType] = adapter
+	protoTypeToAdapter[protoType] = adapter
+}
+
 func KeyFromMasterKey(mk keys.MasterKey) Key {
-	switch mk := mk.(type) {
-	case *pgp.MasterKey:
-		return Key{
-			KeyType: &Key_PgpKey{
-				PgpKey: &PgpKey{
-					Fingerprint: mk.Fingerprint,
-				},
-			},
-		}
-	case *gcpkms.MasterKey:
-		return Key{
-			KeyType: &Key_GcpKmsKey{
-				GcpKmsKey: &GcpKmsKey{
-					ResourceId: mk.ResourceID,
-				},
-			},
-		}
-	case *hcvault.MasterKey:
-		return Key{
-			KeyType: &Key_VaultKey{
-				VaultKey: &VaultKey{
-					VaultAddress: mk.VaultAddress,
-					EnginePath:   mk.EnginePath,
-					KeyName:      mk.KeyName,
-				},
-			},
-		}
-	case *plugin.MasterKey:
-		configBytes, _ := json.Marshal(mk.PluginConfig)
-		return Key{
-			KeyType: &Key_PluginKey{
-				PluginKey: &PluginKey{
-					BinaryName:   mk.BinaryName,
-					InstanceId:   mk.InstanceID,
-					Config:       string(configBytes),
-					Timeout:      mk.Timeout,
-				},
-			},
-		}
-	case *kms.MasterKey:
-		ctx := make(map[string]string)
-		for k, v := range mk.EncryptionContext {
-			ctx[k] = *v
-		}
-		return Key{
-			KeyType: &Key_KmsKey{
-				KmsKey: &KmsKey{
-					Arn:        mk.Arn,
-					Role:       mk.Role,
-					Context:    ctx,
-					AwsProfile: mk.AwsProfile,
-				},
-			},
-		}
-	case *azkv.MasterKey:
-		return Key{
-			KeyType: &Key_AzureKeyvaultKey{
-				AzureKeyvaultKey: &AzureKeyVaultKey{
-					VaultUrl: mk.VaultURL,
-					Name:     mk.Name,
-					Version:  mk.Version,
-				},
-			},
-		}
-	case *age.MasterKey:
-		return Key{
-			KeyType: &Key_AgeKey{
-				AgeKey: &AgeKey{
-					Recipient: mk.Recipient,
-				},
-			},
-		}
-	case *hckms.MasterKey:
-		return Key{
-			KeyType: &Key_HckmsKey{
-				HckmsKey: &HckmsKey{
-					KeyId: mk.KeyID,
-				},
-			},
-		}
-	default:
+	adapter, ok := masterKeyToAdapter[mk.TypeToIdentifier()]
+	if !ok {
 		panic(fmt.Sprintf("Tried to convert unknown MasterKey type %T to keyservice.Key", mk))
 	}
+	return *adapter.ToKey(mk)
 }
