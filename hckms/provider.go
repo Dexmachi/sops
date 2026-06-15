@@ -1,14 +1,58 @@
 package hckms
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/getsops/sops/v3/keys"
+	"github.com/getsops/sops/v3/keyservice"
 )
 
 func init() {
 	keys.RegisterProvider(&Provider{})
+
+	keyservice.RegisterKeyServiceAdapter(
+		KeyTypeIdentifier,
+		reflect.TypeOf(&keyservice.Key_HckmsKey{}),
+		keyservice.KeyServiceAdapter{
+			ToKey: func(mk keys.MasterKey) *keyservice.Key {
+				k := mk.(*MasterKey)
+				return &keyservice.Key{
+					KeyType: &keyservice.Key_HckmsKey{
+						HckmsKey: &keyservice.HckmsKey{
+							KeyId: k.KeyID,
+						},
+					},
+				}
+			},
+			Encrypt: func(key any, plaintext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_HckmsKey).HckmsKey
+				hckmsKey, err := NewMasterKey(k.KeyId)
+				if err != nil {
+					return nil, err
+				}
+				err = hckmsKey.Encrypt(plaintext)
+				return []byte(hckmsKey.EncryptedKey), err
+			},
+			Decrypt: func(key any, ciphertext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_HckmsKey).HckmsKey
+				hckmsKey, err := NewMasterKey(k.KeyId)
+				if err != nil {
+					return nil, err
+				}
+				hckmsKey.EncryptedKey = string(ciphertext)
+				plaintext, err := hckmsKey.Decrypt()
+				return plaintext, err
+			},
+			ToString: func(key any) string {
+				k := key.(*keyservice.Key_HckmsKey).HckmsKey
+				return fmt.Sprintf("HuaweiCloud KMS key with ID %s", k.KeyId)
+			},
+		},
+	)
+
 }
 
 type Provider struct{}
@@ -113,7 +157,7 @@ func (p *Provider) CLIConfig() []keys.ProviderFlag {
 func (p *Provider) MasterKeysFromCLI(c keys.FlagGetter, prefix string) ([]keys.MasterKey, error) {
 	var masterKeys []keys.MasterKey
 	flagName := prefix + "hckms"
-	
+
 	if prefix == "" {
 		slices := c.StringSlice(flagName)
 		if len(slices) > 0 {
@@ -142,4 +186,3 @@ func (p *Provider) MasterKeysFromCLI(c keys.FlagGetter, prefix string) ([]keys.M
 	}
 	return masterKeys, nil
 }
-

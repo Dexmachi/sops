@@ -3,11 +3,59 @@ package plugin
 import (
 	"time"
 
+	"encoding/json"
+	"fmt"
+	"reflect"
+
 	"github.com/getsops/sops/v3/keys"
+	"github.com/getsops/sops/v3/keyservice"
 )
 
 func init() {
 	keys.RegisterProvider(&Provider{})
+
+	keyservice.RegisterKeyServiceAdapter(
+		KeyTypeIdentifier,
+		reflect.TypeOf(&keyservice.Key_PluginKey{}),
+		keyservice.KeyServiceAdapter{
+			ToKey: func(mk keys.MasterKey) *keyservice.Key {
+				k := mk.(*MasterKey)
+				configBytes, _ := json.Marshal(k.PluginConfig)
+				return &keyservice.Key{
+					KeyType: &keyservice.Key_PluginKey{
+						PluginKey: &keyservice.PluginKey{
+							BinaryName: k.BinaryName,
+							InstanceId: k.InstanceID,
+							Config:     string(configBytes),
+							Timeout:    k.Timeout,
+						},
+					},
+				}
+			},
+			Encrypt: func(key any, plaintext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_PluginKey).PluginKey
+				var config map[string]any
+				_ = json.Unmarshal([]byte(k.Config), &config)
+				pluginKey := NewMasterKey(k.BinaryName, config, k.Timeout, k.InstanceId)
+				err := pluginKey.Encrypt(plaintext)
+				return []byte(pluginKey.EncryptedKey), err
+			},
+			Decrypt: func(key any, ciphertext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_PluginKey).PluginKey
+				var config map[string]any
+				_ = json.Unmarshal([]byte(k.Config), &config)
+				pluginKey := NewMasterKey(k.BinaryName, config, k.Timeout, k.InstanceId)
+				pluginKey.EncryptedKey = string(ciphertext)
+				plaintext, err := pluginKey.Decrypt()
+				return plaintext, err
+			},
+			ToString: func(key any) string {
+				k := key.(*keyservice.Key_PluginKey).PluginKey
+				return fmt.Sprintf("Plugin key with binary %s and instance %s", k.BinaryName, k.InstanceId)
+			},
+		},
+	)
+
 }
 
 type Provider struct{}

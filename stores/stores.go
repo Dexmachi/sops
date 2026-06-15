@@ -10,8 +10,8 @@ of the purpose of this package is to make it easy to change the SOPS file format
 package stores
 
 import (
-	"slices"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -163,7 +163,7 @@ func internalGroupFrom(groupMap map[string][]map[string]any) (sops.KeyGroup, err
 	var internalGroup sops.KeyGroup
 	// to match the old behavior of the code, we use this order
 	order := []string{"kms", "gcp_kms", "hckms", "azure_kv", "hc_vault", "pgp", "age", "plugins"}
-	
+
 	for _, name := range order {
 		dataList, ok := groupMap[name]
 		if !ok {
@@ -181,13 +181,13 @@ func internalGroupFrom(groupMap map[string][]map[string]any) (sops.KeyGroup, err
 			internalGroup = append(internalGroup, key)
 		}
 	}
-	
+
 	for name, dataList := range groupMap {
 		found := slices.Contains(order, name)
 		if found {
 			continue
 		}
-		
+
 		provider := keys.GetProvider(name)
 		if provider == nil {
 			continue // skip unknown providers
@@ -200,7 +200,7 @@ func internalGroupFrom(groupMap map[string][]map[string]any) (sops.KeyGroup, err
 			internalGroup = append(internalGroup, key)
 		}
 	}
-	
+
 	return internalGroup, nil
 }
 
@@ -243,6 +243,7 @@ func (m *metadata) internalKeygroups() ([]sops.KeyGroup, error) {
 		return nil, fmt.Errorf("No keys found in file")
 	}
 }
+
 // ExampleComplexTree is an example sops.Tree object exhibiting complex relationships
 var ExampleComplexTree = sops.Tree{
 	Branches: sops.TreeBranches{

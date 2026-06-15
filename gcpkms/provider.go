@@ -1,14 +1,52 @@
 package gcpkms
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/getsops/sops/v3/keys"
+	"github.com/getsops/sops/v3/keyservice"
 )
 
 func init() {
 	keys.RegisterProvider(&Provider{})
+
+	keyservice.RegisterKeyServiceAdapter(
+		KeyTypeIdentifier,
+		reflect.TypeOf(&keyservice.Key_GcpKmsKey{}),
+		keyservice.KeyServiceAdapter{
+			ToKey: func(mk keys.MasterKey) *keyservice.Key {
+				k := mk.(*MasterKey)
+				return &keyservice.Key{
+					KeyType: &keyservice.Key_GcpKmsKey{
+						GcpKmsKey: &keyservice.GcpKmsKey{
+							ResourceId: k.ResourceID,
+						},
+					},
+				}
+			},
+			Encrypt: func(key any, plaintext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_GcpKmsKey).GcpKmsKey
+				gcpKmsKey := MasterKey{ResourceID: k.ResourceId}
+				err := gcpKmsKey.Encrypt(plaintext)
+				return []byte(gcpKmsKey.EncryptedKey), err
+			},
+			Decrypt: func(key any, ciphertext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_GcpKmsKey).GcpKmsKey
+				gcpKmsKey := MasterKey{ResourceID: k.ResourceId}
+				gcpKmsKey.EncryptedKey = string(ciphertext)
+				plaintext, err := gcpKmsKey.Decrypt()
+				return []byte(plaintext), err
+			},
+			ToString: func(key any) string {
+				k := key.(*keyservice.Key_GcpKmsKey).GcpKmsKey
+				return fmt.Sprintf("GCP KMS key with resource ID %s", k.ResourceId)
+			},
+		},
+	)
+
 }
 
 type Provider struct{}
@@ -99,7 +137,7 @@ func (p *Provider) CLIConfig() []keys.ProviderFlag {
 func (p *Provider) MasterKeysFromCLI(c keys.FlagGetter, prefix string) ([]keys.MasterKey, error) {
 	var masterKeys []keys.MasterKey
 	flagName := prefix + "gcp-kms"
-	
+
 	if prefix == "" {
 		slices := c.StringSlice(flagName)
 		if len(slices) > 0 {
@@ -120,4 +158,3 @@ func (p *Provider) MasterKeysFromCLI(c keys.FlagGetter, prefix string) ([]keys.M
 	}
 	return masterKeys, nil
 }
-

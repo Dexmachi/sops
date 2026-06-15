@@ -1,14 +1,62 @@
 package azkv
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/getsops/sops/v3/keys"
+	"github.com/getsops/sops/v3/keyservice"
 )
 
 func init() {
 	keys.RegisterProvider(&Provider{})
+
+	keyservice.RegisterKeyServiceAdapter(
+		KeyTypeIdentifier,
+		reflect.TypeOf(&keyservice.Key_AzureKeyvaultKey{}),
+		keyservice.KeyServiceAdapter{
+			ToKey: func(mk keys.MasterKey) *keyservice.Key {
+				k := mk.(*MasterKey)
+				return &keyservice.Key{
+					KeyType: &keyservice.Key_AzureKeyvaultKey{
+						AzureKeyvaultKey: &keyservice.AzureKeyVaultKey{
+							VaultUrl: k.VaultURL,
+							Name:     k.Name,
+							Version:  k.Version,
+						},
+					},
+				}
+			},
+			Encrypt: func(key any, plaintext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_AzureKeyvaultKey).AzureKeyvaultKey
+				azkvKey := MasterKey{
+					VaultURL: k.VaultUrl,
+					Name:     k.Name,
+					Version:  k.Version,
+				}
+				err := azkvKey.Encrypt(plaintext)
+				return []byte(azkvKey.EncryptedKey), err
+			},
+			Decrypt: func(key any, ciphertext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_AzureKeyvaultKey).AzureKeyvaultKey
+				azkvKey := MasterKey{
+					VaultURL: k.VaultUrl,
+					Name:     k.Name,
+					Version:  k.Version,
+				}
+				azkvKey.EncryptedKey = string(ciphertext)
+				plaintext, err := azkvKey.Decrypt()
+				return []byte(plaintext), err
+			},
+			ToString: func(key any) string {
+				k := key.(*keyservice.Key_AzureKeyvaultKey).AzureKeyvaultKey
+				return fmt.Sprintf("Azure Key Vault key with URL %s/keys/%s/%s", k.VaultUrl, k.Name, k.Version)
+			},
+		},
+	)
+
 }
 
 type Provider struct{}

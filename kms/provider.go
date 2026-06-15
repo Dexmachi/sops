@@ -4,12 +4,78 @@ import (
 	"strings"
 	"time"
 
+	"fmt"
+	"reflect"
+
 	"github.com/getsops/sops/v3/keys"
+	"github.com/getsops/sops/v3/keyservice"
 	"github.com/getsops/sops/v3/version"
 )
 
 func init() {
 	keys.RegisterProvider(&Provider{})
+
+	keyservice.RegisterKeyServiceAdapter(
+		KeyTypeIdentifier,
+		reflect.TypeOf(&keyservice.Key_KmsKey{}),
+		keyservice.KeyServiceAdapter{
+			ToKey: func(mk keys.MasterKey) *keyservice.Key {
+				k := mk.(*MasterKey)
+				ctx := make(map[string]string)
+				for mk, mv := range k.EncryptionContext {
+					ctx[mk] = *mv
+				}
+				return &keyservice.Key{
+					KeyType: &keyservice.Key_KmsKey{
+						KmsKey: &keyservice.KmsKey{
+							Arn:        k.Arn,
+							Role:       k.Role,
+							Context:    ctx,
+							AwsProfile: k.AwsProfile,
+						},
+					},
+				}
+			},
+			Encrypt: func(key any, plaintext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_KmsKey).KmsKey
+				ctx := make(map[string]*string)
+				for mk, mv := range k.Context {
+					value := mv
+					ctx[mk] = &value
+				}
+				kmsKey := MasterKey{
+					Arn:               k.Arn,
+					Role:              k.Role,
+					EncryptionContext: ctx,
+					AwsProfile:        k.AwsProfile,
+				}
+				err := kmsKey.Encrypt(plaintext)
+				return []byte(kmsKey.EncryptedKey), err
+			},
+			Decrypt: func(key any, ciphertext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_KmsKey).KmsKey
+				ctx := make(map[string]*string)
+				for mk, mv := range k.Context {
+					value := mv
+					ctx[mk] = &value
+				}
+				kmsKey := MasterKey{
+					Arn:               k.Arn,
+					Role:              k.Role,
+					EncryptionContext: ctx,
+					AwsProfile:        k.AwsProfile,
+				}
+				kmsKey.EncryptedKey = string(ciphertext)
+				plaintext, err := kmsKey.Decrypt()
+				return []byte(plaintext), err
+			},
+			ToString: func(key any) string {
+				k := key.(*keyservice.Key_KmsKey).KmsKey
+				return fmt.Sprintf("AWS KMS key with ARN %s", k.Arn)
+			},
+		},
+	)
+
 }
 
 type Provider struct{}
@@ -231,7 +297,7 @@ func (p *Provider) CLIConfig() []keys.ProviderFlag {
 
 func (p *Provider) MasterKeysFromCLI(c keys.FlagGetter, prefix string) ([]keys.MasterKey, error) {
 	var keys []keys.MasterKey
-	
+
 	// 'kms' can be requested as 'kms', 'add-kms', 'rm-kms'
 	flagName := prefix + "kms"
 	if prefix == "" { // for slice or backward compatibility, 'kms' is both the slice and the string global
@@ -245,12 +311,12 @@ func (p *Provider) MasterKeysFromCLI(c keys.FlagGetter, prefix string) ([]keys.M
 			return keys, nil
 		}
 	}
-	
+
 	arns := c.String(flagName)
 	if arns == "" {
 		return keys, nil
 	}
-	
+
 	for _, k := range MasterKeysFromArnString(arns, ParseKMSContext(c.String("encryption-context")), c.String("aws-profile")) {
 		keys = append(keys, k)
 	}

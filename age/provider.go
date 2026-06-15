@@ -1,13 +1,50 @@
 package age
 
 import (
+	"reflect"
 	"strings"
 
 	"github.com/getsops/sops/v3/keys"
+	"github.com/getsops/sops/v3/keyservice"
 )
 
 func init() {
 	keys.RegisterProvider(&Provider{})
+
+	keyservice.RegisterKeyServiceAdapter(
+		KeyTypeIdentifier,
+		reflect.TypeOf(&keyservice.Key_AgeKey{}),
+		keyservice.KeyServiceAdapter{
+			ToKey: func(mk keys.MasterKey) *keyservice.Key {
+				k := mk.(*MasterKey)
+				return &keyservice.Key{
+					KeyType: &keyservice.Key_AgeKey{
+						AgeKey: &keyservice.AgeKey{
+							Recipient: k.Recipient,
+						},
+					},
+				}
+			},
+			Encrypt: func(key any, plaintext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_AgeKey).AgeKey
+				ageKey := MasterKey{Recipient: k.Recipient}
+				err := ageKey.Encrypt(plaintext)
+				return []byte(ageKey.EncryptedKey), err
+			},
+			Decrypt: func(key any, ciphertext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_AgeKey).AgeKey
+				ageKey := MasterKey{Recipient: k.Recipient}
+				ageKey.EncryptedKey = string(ciphertext)
+				plaintext, err := ageKey.Decrypt()
+				return []byte(plaintext), err
+			},
+			ToString: func(key any) string {
+				k := key.(*keyservice.Key_AgeKey).AgeKey
+				return "Age key with recipient " + k.Recipient
+			},
+		},
+	)
+
 }
 
 type Provider struct{}

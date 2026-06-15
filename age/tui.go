@@ -1,8 +1,9 @@
 package age
 
 import (
-	"filippo.io/age/plugin"
 	"testing"
+
+	"filippo.io/age/plugin"
 )
 
 var testOnlyAgePassword string

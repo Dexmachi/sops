@@ -365,4 +365,3 @@ func TestPluginConcurrency(t *testing.T) {
 
 	wg.Wait()
 }
-

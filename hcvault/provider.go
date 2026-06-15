@@ -1,14 +1,62 @@
 package hcvault
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/getsops/sops/v3/keys"
+	"github.com/getsops/sops/v3/keyservice"
 )
 
 func init() {
 	keys.RegisterProvider(&Provider{})
+
+	keyservice.RegisterKeyServiceAdapter(
+		KeyTypeIdentifier,
+		reflect.TypeOf(&keyservice.Key_VaultKey{}),
+		keyservice.KeyServiceAdapter{
+			ToKey: func(mk keys.MasterKey) *keyservice.Key {
+				k := mk.(*MasterKey)
+				return &keyservice.Key{
+					KeyType: &keyservice.Key_VaultKey{
+						VaultKey: &keyservice.VaultKey{
+							VaultAddress: k.VaultAddress,
+							EnginePath:   k.EnginePath,
+							KeyName:      k.KeyName,
+						},
+					},
+				}
+			},
+			Encrypt: func(key any, plaintext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_VaultKey).VaultKey
+				vaultKey := MasterKey{
+					VaultAddress: k.VaultAddress,
+					EnginePath:   k.EnginePath,
+					KeyName:      k.KeyName,
+				}
+				err := vaultKey.Encrypt(plaintext)
+				return []byte(vaultKey.EncryptedKey), err
+			},
+			Decrypt: func(key any, ciphertext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_VaultKey).VaultKey
+				vaultKey := MasterKey{
+					VaultAddress: k.VaultAddress,
+					EnginePath:   k.EnginePath,
+					KeyName:      k.KeyName,
+				}
+				vaultKey.EncryptedKey = string(ciphertext)
+				plaintext, err := vaultKey.Decrypt()
+				return []byte(plaintext), err
+			},
+			ToString: func(key any) string {
+				k := key.(*keyservice.Key_VaultKey).VaultKey
+				return fmt.Sprintf("Hashicorp Vault key with URI %s/v1/%s/keys/%s", k.VaultAddress, k.EnginePath, k.KeyName)
+			},
+		},
+	)
+
 }
 
 type Provider struct{}
@@ -101,7 +149,7 @@ func (p *Provider) CLIConfig() []keys.ProviderFlag {
 func (p *Provider) MasterKeysFromCLI(c keys.FlagGetter, prefix string) ([]keys.MasterKey, error) {
 	var masterKeys []keys.MasterKey
 	flagName := prefix + "hc-vault-transit"
-	
+
 	if prefix == "" {
 		slices := c.StringSlice(flagName)
 		if len(slices) > 0 {
@@ -130,4 +178,3 @@ func (p *Provider) MasterKeysFromCLI(c keys.FlagGetter, prefix string) ([]keys.M
 	}
 	return masterKeys, nil
 }
-

@@ -1,10 +1,27 @@
-package keyservice
+package keyservice_test
 
 import (
+	"testing"
+
+	"github.com/getsops/sops/v3/keyservice"
+	"github.com/getsops/sops/v3/kms"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
+
+func kmsKeyToMasterKey(key *keyservice.KmsKey) kms.MasterKey {
+	ctx := make(map[string]*string)
+	for k, v := range key.Context {
+		value := v // Allocate a new string to prevent the pointer below from referring to only the last iteration value
+		ctx[k] = &value
+	}
+	return kms.MasterKey{
+		Arn:               key.Arn,
+		Role:              key.Role,
+		EncryptionContext: ctx,
+		AwsProfile:        key.AwsProfile,
+	}
+}
 
 func TestKmsKeyToMasterKey(t *testing.T) {
 
@@ -53,7 +70,7 @@ func TestKmsKeyToMasterKey(t *testing.T) {
 				inputCtx[k] = v
 			}
 
-			key := &KmsKey{
+			key := &keyservice.KmsKey{
 				Arn:        c.expectedArn,
 				Role:       c.expectedRole,
 				Context:    inputCtx,

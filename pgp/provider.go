@@ -1,14 +1,52 @@
 package pgp
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/getsops/sops/v3/keys"
+	"github.com/getsops/sops/v3/keyservice"
 )
 
 func init() {
 	keys.RegisterProvider(&Provider{})
+
+	keyservice.RegisterKeyServiceAdapter(
+		KeyTypeIdentifier,
+		reflect.TypeOf(&keyservice.Key_PgpKey{}),
+		keyservice.KeyServiceAdapter{
+			ToKey: func(mk keys.MasterKey) *keyservice.Key {
+				k := mk.(*MasterKey)
+				return &keyservice.Key{
+					KeyType: &keyservice.Key_PgpKey{
+						PgpKey: &keyservice.PgpKey{
+							Fingerprint: k.Fingerprint,
+						},
+					},
+				}
+			},
+			Encrypt: func(key any, plaintext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_PgpKey).PgpKey
+				pgpKey := NewMasterKeyFromFingerprint(k.Fingerprint)
+				err := pgpKey.Encrypt(plaintext)
+				return []byte(pgpKey.EncryptedKey), err
+			},
+			Decrypt: func(key any, ciphertext []byte) ([]byte, error) {
+				k := key.(*keyservice.Key_PgpKey).PgpKey
+				pgpKey := NewMasterKeyFromFingerprint(k.Fingerprint)
+				pgpKey.EncryptedKey = string(ciphertext)
+				plaintext, err := pgpKey.Decrypt()
+				return []byte(plaintext), err
+			},
+			ToString: func(key any) string {
+				k := key.(*keyservice.Key_PgpKey).PgpKey
+				return fmt.Sprintf("PGP key with fingerprint %s", k.Fingerprint)
+			},
+		},
+	)
+
 }
 
 type Provider struct{}
@@ -78,7 +116,7 @@ func (p *Provider) CLIConfig() []keys.ProviderFlag {
 func (p *Provider) MasterKeysFromCLI(c keys.FlagGetter, prefix string) ([]keys.MasterKey, error) {
 	var masterKeys []keys.MasterKey
 	flagName := prefix + "pgp"
-	
+
 	if prefix == "" {
 		slices := c.StringSlice(flagName)
 		if len(slices) > 0 {
